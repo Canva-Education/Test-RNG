@@ -6,7 +6,6 @@
 <title>Test RNG - Cloud Sync</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
-  /* Keep all the CSS from the previous version here */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root { --bg: #0a0a0f; --surface: #13131c; --surface2: #1c1c2a; --border: rgba(120,100,255,0.2); --accent: #7b5cff; --accent2: #ff5c8a; --text: #e8e6ff; --muted: #7a789a; --mono: 'Space Mono', monospace; --sans: 'Syne', sans-serif; --gold: #ffd700; --danger: #ff4444; --success: #44ffaa; }
   body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; padding: 0; position: relative; overflow-x: hidden; }
@@ -57,30 +56,69 @@
   <header>
     <div class="logo">github.com / test-rng</div>
     <h1>TEST RNG</h1>
-    <p class="subtitle">// cloud synced — shared pool — stealth mode</p>
+    <p class="subtitle">// cloud synced — Shared Pool — Stealth Mode</p>
   </header>
-  <div id="app"></div>
+  
+  <div class="card" id="result-card">
+    <div class="card-label">Last draw</div>
+    <div class="result-display" id="result-inner">
+       <div class="result-empty">— Loading —</div>
+    </div>
+  </div>
+
+  <div class="stats-row" style="margin-bottom:16px;" id="stats-inner">
+    <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Pool size</div></div>
+    <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Drawn</div></div>
+    <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Used</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Your name (optional)</div>
+    <input type="text" id="name-input" placeholder="Enter your name…" maxlength="40" style="width:100%">
+  </div>
+
+  <div class="roll-btn-wrap" id="action-inner">
+    <button class="roll-btn" id="roll-btn">DRAW NUMBER</button>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Settings</div>
+    <div class="input-row">
+      <input type="number" id="max-input" value="100">
+      <button class="btn primary" id="apply-btn">Update Pool</button>
+      <button class="btn danger" id="reset-btn">Reset All</button>
+    </div>
+  </div>
+
+  <div id="dev-section">
+    <div class="card">
+      <div class="card-label">Developer access</div>
+      <div class="input-row">
+        <input type="password" id="dev-code-input" placeholder="Enter code…">
+        <button class="btn" id="dev-unlock-btn">Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-divider"><span>number pool</span></div>
+  <div class="card">
+    <button class="btn" id="toggle-pool-btn" style="width:100%;margin-bottom:10px;">Show Full Pool</button>
+    <div id="pool-inner"></div>
+  </div>
+
+  <div class="section-divider"><span>draw history</span></div>
+  <div id="history-inner"></div>
 </div>
 
 <script>
-// REPLACE THESE WITH YOUR ACTUAL SUPABASE KEYS
 const SUPABASE_URL = 'https://qlbcxutceqeomxldliue.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFsYmN4dXRjZXFlb214bGRsaXVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNDY3MTgsImV4cCI6MjA5MTgyMjcxOH0.5DBDrXqvRILPOI0y4LJuGkqRG6tkye0s-1_KGbYDxUE';
 const DEV_CODE = 'CanvaDeveloper123';
 
-let state = {
-  maxNum: 100,
-  used: [],
-  lastResult: null,
-  rigQueue: [],
-  history: []
-};
-
+let state = { maxNum: 100, used: [], lastResult: null, rigQueue: [], history: [] };
 let isDev = false;
-let nameInput = '';
 let poolVisible = false;
 
-// Cloud Communication
 async function fetchCloud() {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rng_state?id=eq.global_pool`, {
     headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` }
@@ -92,28 +130,74 @@ async function fetchCloud() {
 async function updateCloud(newData) {
   await fetch(`${SUPABASE_URL}/rest/v1/rng_state?id=eq.global_pool`, {
     method: 'PATCH',
-    headers: { 
-      "apikey": SUPABASE_KEY, 
-      "Authorization": `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "application/json" 
-    },
+    headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({ data: newData })
   });
 }
 
-function getAvailable(currentState) {
+function getAvailable(s) {
   const nums = [];
-  for (let i = 1; i <= currentState.maxNum; i++) {
-    if (!currentState.used.includes(i)) nums.push(i);
-  }
+  for (let i = 1; i <= s.maxNum; i++) { if (!s.used.includes(i)) nums.push(i); }
   return nums;
 }
 
+// THE "SMART" SYNC: Only updates the display, not the inputs
 async function sync() {
   try {
-    state = await fetchCloud();
-    render();
-  } catch (e) { console.error("Sync failed", e); }
+    const newState = await fetchCloud();
+    // Only update if things actually changed (or first load)
+    if (JSON.stringify(newState) !== JSON.stringify(state)) {
+      state = newState;
+      updateDisplay();
+    }
+  } catch (e) { console.error("Sync error", e); }
+}
+
+function updateDisplay() {
+  const available = getAvailable(state);
+  const usedCount = state.used.length;
+  const total = state.maxNum;
+  const pct = total > 0 ? Math.round((usedCount / total) * 100) : 0;
+
+  // 1. Update Result
+  document.getElementById('result-inner').innerHTML = state.lastResult !== null
+    ? `<div class="result-number">${state.lastResult}</div><div class="result-meta">${usedCount} drawn · ${available.length} remaining</div>`
+    : `<div class="result-empty">— awaiting draw —</div>`;
+
+  // 2. Update Stats
+  document.getElementById('stats-inner').innerHTML = `
+    <div class="stat"><div class="stat-val">${total}</div><div class="stat-lbl">Pool size</div></div>
+    <div class="stat"><div class="stat-val">${usedCount}</div><div class="stat-lbl">Drawn</div></div>
+    <div class="stat"><div class="stat-val">${available.length === 0 ? '∅' : pct + '%'}</div><div class="stat-lbl">Used</div></div>
+  `;
+
+  // 3. Update Action Button
+  document.getElementById('action-inner').innerHTML = available.length === 0
+    ? `<div style="color:var(--danger);font-family:var(--mono);">Pool exhausted! Reset to continue.</div>`
+    : `<button class="roll-btn" id="roll-btn">DRAW NUMBER</button>`;
+  document.getElementById('roll-btn')?.addEventListener('click', roll);
+
+  // 4. Update Pool
+  const poolBox = document.getElementById('pool-inner');
+  if (poolVisible) {
+    poolBox.innerHTML = `<div class="pool-grid">${Array.from({length: state.maxNum}, (_,i) => i+1).map(i => 
+      `<div class="pool-num ${state.used.includes(i) ? 'used' : ''}">${i}</div>`).join('')}</div>`;
+  } else {
+    poolBox.innerHTML = `<div style="font-family:var(--mono);color:var(--muted);font-size:12px;text-align:center;">Pool hidden</div>`;
+  }
+
+  // 5. Update History
+  document.getElementById('history-inner').innerHTML = state.history.length > 0 
+    ? `<div class="history-list">${state.history.slice(0,20).map(e => `
+        <div class="history-item">
+          <div><span class="num">${e.num}</span> ${e.name ? `<small style="margin-left:8px;color:var(--accent)">${e.name}</small>` : ''}</div>
+          <div class="meta">${new Date(e.time).toLocaleTimeString()}</div>
+        </div>`).join('')}</div>`
+    : '';
+
+  // 6. Update Dev Queue (if unlocked)
+  const qLabel = document.getElementById('queue-label');
+  if (qLabel) qLabel.innerText = `Stealth Queue — [${state.rigQueue.join(', ')}]`;
 }
 
 async function roll() {
@@ -123,7 +207,6 @@ async function roll() {
 
   let picked;
   let rigIndex = latest.rigQueue.findIndex(num => available.includes(num));
-  
   if (rigIndex !== -1) {
     picked = latest.rigQueue[rigIndex];
     latest.rigQueue.splice(rigIndex, 1);
@@ -133,145 +216,69 @@ async function roll() {
 
   latest.used.push(picked);
   latest.lastResult = picked;
-  latest.history.unshift({ num: picked, name: nameInput.trim() || null, time: Date.now() });
+  const name = document.getElementById('name-input').value.trim();
+  latest.history.unshift({ num: picked, name: name || null, time: Date.now() });
   
   await updateCloud(latest);
   state = latest;
-  render();
+  updateDisplay();
 }
 
-function render() {
-  const available = getAvailable(state);
-  const usedCount = state.used.length;
-  const total = state.maxNum;
-  const pct = total > 0 ? Math.round((usedCount / total) * 100) : 0;
+// UI Listeners (These only run once, so typing is never interrupted)
+document.getElementById('apply-btn').addEventListener('click', async () => {
+  const newMax = parseInt(document.getElementById('max-input').value) || 100;
+  state.maxNum = newMax;
+  state.used = [];
+  state.lastResult = null;
+  state.history = [];
+  await updateCloud(state);
+  updateDisplay();
+});
 
-  document.getElementById('app').innerHTML = `
-    <div class="card" id="result-display">
-      <div class="card-label">Last draw</div>
-      <div class="result-display">
-        ${state.lastResult !== null
-          ? `<div class="result-number">${state.lastResult}</div>
-             <div class="result-meta">${usedCount} drawn · ${available.length} remaining</div>`
-          : `<div class="result-empty">— awaiting draw —</div>`
-        }
-      </div>
-    </div>
-
-    <div class="stats-row" style="margin-bottom:16px;">
-      <div class="stat"><div class="stat-val">${total}</div><div class="stat-lbl">Pool size</div></div>
-      <div class="stat"><div class="stat-val">${usedCount}</div><div class="stat-lbl">Drawn</div></div>
-      <div class="stat"><div class="stat-val">${available.length === 0 ? '∅' : pct + '%'}</div><div class="stat-lbl">Used</div></div>
-    </div>
-
-    <div class="card">
-      <div class="card-label">Your name (optional)</div>
-      <input type="text" id="name-input" placeholder="Enter your name…" value="${nameInput}" maxlength="40" style="width:100%">
-    </div>
-
-    <div class="roll-btn-wrap">
-      ${available.length === 0
-        ? `<div style="color:var(--danger);font-family:var(--mono);">Pool exhausted! Reset to continue.</div>`
-        : `<button class="roll-btn" id="roll-btn">DRAW NUMBER</button>`
-      }
-    </div>
-
-    <div class="card">
-      <div class="card-label">Settings</div>
-      <div class="input-row">
-        <input type="number" id="max-input" value="${state.maxNum}">
-        <button class="btn primary" id="apply-btn">Update Pool</button>
-        <button class="btn danger" id="reset-btn">Reset All</button>
-      </div>
-    </div>
-
-    ${!isDev ? `
-    <div class="card">
-      <div class="card-label">Developer access</div>
-      <div class="input-row">
-        <input type="password" id="dev-code-input" placeholder="Enter code…">
-        <button class="btn" id="dev-unlock-btn">Unlock</button>
-      </div>
-    </div>
-    ` : `
-    <div class="card rig-panel">
-      <div class="card-label" style="color:var(--gold);">Stealth Queue — [${state.rigQueue.join(', ')}]</div>
-      <div class="input-row">
-        <input type="number" id="rig-input" placeholder="Queue number…">
-        <button class="btn gold" id="rig-btn">Add to Queue</button>
-        <button class="btn" id="dev-lock-btn">Lock</button>
-      </div>
-      <div class="msg info">Rigs are hidden and shared across all devices.</div>
-    </div>
-    `}
-
-    <div class="section-divider"><span>number pool (1–${state.maxNum})</span></div>
-    <div class="card">
-      <button class="btn" id="toggle-pool-btn" style="width:100%;margin-bottom:10px;">${poolVisible ? 'Hide' : 'Show'} Full Pool</button>
-      ${poolVisible ? `
-      <div class="pool-grid">
-        ${Array.from({length: state.maxNum}, (_,i) => i+1).map(i => 
-          `<div class="pool-num ${state.used.includes(i) ? 'used' : ''}">${i}</div>`
-        ).join('')}
-      </div>` : ''}
-    </div>
-
-    ${state.history.length > 0 ? `
-    <div class="section-divider"><span>draw history</span></div>
-    <div class="history-list">
-      ${state.history.slice(0,20).map(e => `
-        <div class="history-item">
-          <div><span class="num">${e.num}</span> ${e.name ? `<small style="margin-left:8px;color:var(--accent)">${e.name}</small>` : ''}</div>
-          <div class="meta">${new Date(e.time).toLocaleTimeString()}</div>
-        </div>
-      `).join('')}
-    </div>` : ''}
-  `;
-
-  // UI Listeners
-  document.getElementById('roll-btn')?.addEventListener('click', roll);
-  document.getElementById('name-input')?.addEventListener('input', e => nameInput = e.target.value);
-  document.getElementById('toggle-pool-btn')?.addEventListener('click', () => { poolVisible = !poolVisible; render(); });
-  
-  document.getElementById('apply-btn')?.addEventListener('click', async () => {
-    state.maxNum = parseInt(document.getElementById('max-input').value) || 100;
+document.getElementById('reset-btn').addEventListener('click', async () => {
+  if(confirm('Reset EVERYTHING?')) {
     state.used = [];
     state.lastResult = null;
     state.history = [];
     await updateCloud(state);
-    render();
-  });
+    updateDisplay();
+  }
+});
 
-  document.getElementById('reset-btn')?.addEventListener('click', async () => {
-    if(confirm('Reset EVERYTHING?')) {
-      state.used = [];
-      state.lastResult = null;
-      state.history = [];
-      await updateCloud(state);
-      render();
-    }
-  });
+document.getElementById('toggle-pool-btn').addEventListener('click', (e) => {
+  poolVisible = !poolVisible;
+  e.target.innerText = poolVisible ? 'Hide Full Pool' : 'Show Full Pool';
+  updateDisplay();
+});
 
-  document.getElementById('dev-unlock-btn')?.addEventListener('click', () => {
-    if(document.getElementById('dev-code-input').value === DEV_CODE) { isDev = true; render(); }
-  });
+document.getElementById('dev-unlock-btn').addEventListener('click', () => {
+  if(document.getElementById('dev-code-input').value === DEV_CODE) {
+    isDev = true;
+    document.getElementById('dev-section').innerHTML = `
+      <div class="card rig-panel">
+        <div class="card-label" id="queue-label" style="color:var(--gold);">Stealth Queue — [${state.rigQueue.join(', ')}]</div>
+        <div class="input-row">
+          <input type="number" id="rig-input" placeholder="Queue number…">
+          <button class="btn gold" id="rig-btn">Add to Queue</button>
+        </div>
+        <div class="msg info">Rigs are hidden and shared across all devices.</div>
+      </div>`;
+    document.getElementById('rig-btn').addEventListener('click', async () => {
+      const val = parseInt(document.getElementById('rig-input').value);
+      if(!isNaN(val)) {
+        state.rigQueue.push(val);
+        document.getElementById('rig-input').value = '';
+        await updateCloud(state);
+        updateDisplay();
+      }
+    });
+  }
+});
 
-  document.getElementById('dev-lock-btn')?.addEventListener('click', () => { isDev = false; render(); });
-
-  document.getElementById('rig-btn')?.addEventListener('click', async () => {
-    const val = parseInt(document.getElementById('rig-input').value);
-    if(!isNaN(val)) {
-      state.rigQueue.push(val);
-      await updateCloud(state);
-      render();
-    }
-  });
-}
-
-// Initial load and auto-sync loop
+// Initialization
 (async () => {
   await sync();
-  setInterval(sync, 3000); // Check for updates from other devices every 3 seconds
+  setInterval(sync, 3000); 
 })();
 </script>
 </body>
