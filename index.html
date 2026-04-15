@@ -7,7 +7,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
-  /* CSS remains exactly as you had it */
+  /* CSS remains the same */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root { --bg: #0a0a0f; --surface: #13131c; --surface2: #1c1c2a; --border: rgba(120,100,255,0.2); --accent: #7b5cff; --accent2: #ff5c8a; --text: #e8e6ff; --muted: #7a789a; --mono: 'Space Mono', monospace; --sans: 'Syne', sans-serif; --gold: #ffd700; --danger: #ff4444; --success: #44ffaa; }
   body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; padding: 0; position: relative; overflow-x: hidden; }
@@ -49,7 +49,6 @@
   .roll-btn { font-size: 20px; font-weight: 800; padding: 18px 48px; border-radius: 12px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; color: #fff; cursor: pointer; transition: all 0.15s; font-family: var(--sans); }
   .roll-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(123,92,255,0.4); }
   @keyframes popIn { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-  .msg.info { background: rgba(123,92,255,0.08); color: #a08fff; border: 1px solid rgba(123,92,255,0.2); padding: 8px; border-radius: 6px; font-size: 12px; font-family: var(--mono); margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -61,9 +60,183 @@
     <p class="subtitle">// cloud synced — Shared Pool — Stealth Mode</p>
   </header>
   
-  <div class="card" id="result-card">
-    <div class="card-label">Last draw</div>
-    <div id="result-inner" class="result-display"><div class="result-empty">— Connecting —</div></div>
-  </div>
+  <div id="ui-root">
+    </div>
+</div>
 
-  <div id="stats-inner" class="stats-row" style="margin-bottom:16px;"></div>
+<script>
+const SUPABASE_URL = 'https://qlbcxutceqeomxldliue.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFsYmN4dXRjZXFlb214bGRsaXVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNDY3MTgsImV4cCI6MjA5MTgyMjcxOH0.5DBDrXqvRILPOI0y4LJuGkqRG6tkye0s-1_KGbYDxUE';
+const DEV_CODE = 'CanvaDeveloper123';
+
+let sb;
+let state = { maxNum: 100, used: [], lastResult: null, rigQueue: [], history: [] };
+let isDev = false;
+let poolVisible = false;
+let currentName = "";
+let currentRigVal = "";
+
+// 1. Render the HTML to the page immediately
+function render() {
+  const available = [];
+  for (let i = 1; i <= state.maxNum; i++) { if (!state.used.includes(i)) available.push(i); }
+  const total = state.maxNum;
+  const pct = total > 0 ? Math.round((state.used.length / total) * 100) : 0;
+
+  document.getElementById('ui-root').innerHTML = `
+    <div class="card">
+      <div class="card-label">Last draw</div>
+      <div class="result-display">
+        ${state.lastResult ? `<div class="result-number">${state.lastResult}</div><div class="result-meta">${state.used.length} drawn · ${available.length} remaining</div>` : `<div class="result-empty">— awaiting draw —</div>`}
+      </div>
+    </div>
+
+    <div class="stats-row" style="margin-bottom:16px;">
+      <div class="stat"><div class="stat-val">${total}</div><div class="stat-lbl">Pool size</div></div>
+      <div class="stat"><div class="stat-val">${state.used.length}</div><div class="stat-lbl">Drawn</div></div>
+      <div class="stat"><div class="stat-val">${available.length === 0 ? '∅' : pct + '%'}</div><div class="stat-lbl">Used</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Your name (optional)</div>
+      <input type="text" id="name-input" value="${currentName}" placeholder="Enter name…">
+    </div>
+
+    <div class="roll-btn-wrap">
+      ${available.length === 0 ? `<div style="color:var(--danger)">Pool exhausted!</div>` : `<button class="roll-btn" id="roll-btn">DRAW NUMBER</button>`}
+    </div>
+
+    <div class="card">
+      <div class="card-label">Settings</div>
+      <div class="input-row">
+        <input type="number" id="max-input" value="${state.maxNum}">
+        <button class="btn primary" id="apply-btn">Update Pool</button>
+        <button class="btn danger" id="reset-btn">Reset</button>
+      </div>
+    </div>
+
+    <div id="dev-area">
+      ${isDev ? `
+        <div class="card rig-panel">
+          <div class="card-label" style="color:var(--gold);">Queue: [${state.rigQueue.join(', ')}]</div>
+          <div class="input-row">
+            <input type="number" id="rig-input" value="${currentRigVal}" placeholder="Number…">
+            <button class="btn gold" id="rig-btn">Add to Queue</button>
+            <button class="btn" id="dev-lock-btn">Lock</button>
+          </div>
+        </div>
+      ` : `
+        <div class="card">
+          <div class="card-label">Developer access</div>
+          <div class="input-row">
+            <input type="password" id="dev-code-input" placeholder="Code…">
+            <button class="btn" id="dev-unlock-btn">Unlock</button>
+          </div>
+        </div>
+      `}
+    </div>
+
+    <div class="section-divider"><span>Pool</span></div>
+    <div class="card">
+      <button class="btn" id="pool-toggle" style="width:100%;margin-bottom:10px;">${poolVisible ? 'Hide' : 'Show'} Full Pool</button>
+      ${poolVisible ? `<div class="pool-grid">${Array.from({length: total}, (_,i)=>i+1).map(i=>`<div class="pool-num ${state.used.includes(i)?'used':''}">${i}</div>`).join('')}</div>` : ''}
+    </div>
+
+    <div class="section-divider"><span>History</span></div>
+    <div class="history-list">
+      ${state.history.slice(0,20).map(e=>`
+        <div class="history-item">
+          <div><span class="num">${e.num}</span> <small style="color:var(--accent)">${e.name||''}</small></div>
+          <div class="meta">${new Date(e.time).toLocaleTimeString()}</div>
+        </div>`).join('')}
+    </div>
+  `;
+
+  attachListeners();
+}
+
+function attachListeners() {
+  document.getElementById('name-input')?.addEventListener('input', e => currentName = e.target.value);
+  document.getElementById('roll-btn')?.addEventListener('click', roll);
+  document.getElementById('pool-toggle')?.addEventListener('click', () => { poolVisible = !poolVisible; render(); });
+  
+  document.getElementById('apply-btn')?.addEventListener('click', async () => {
+    state.maxNum = parseInt(document.getElementById('max-input').value) || 100;
+    state.used = []; state.lastResult = null; state.history = [];
+    await updateCloud();
+  });
+
+  document.getElementById('reset-btn')?.addEventListener('click', async () => {
+    if(confirm('Reset?')) { state.used = []; state.lastResult = null; state.history = []; await updateCloud(); }
+  });
+
+  document.getElementById('dev-unlock-btn')?.addEventListener('click', () => {
+    if(document.getElementById('dev-code-input').value === DEV_CODE) { isDev = true; render(); }
+  });
+
+  document.getElementById('dev-lock-btn')?.addEventListener('click', () => { isDev = false; render(); });
+
+  const rigIn = document.getElementById('rig-input');
+  rigIn?.addEventListener('input', e => currentRigVal = e.target.value);
+  
+  document.getElementById('rig-btn')?.addEventListener('click', async () => {
+    const val = parseInt(currentRigVal);
+    if(!isNaN(val)) { state.rigQueue.push(val); currentRigVal = ""; await updateCloud(); }
+  });
+}
+
+// 2. Cloud Logic
+async function updateCloud() {
+  await sb.from('rng_state').update({ data: state }).eq('id', 'global_pool');
+  render();
+}
+
+async function roll() {
+  const { data } = await sb.from('rng_state').select('data').eq('id', 'global_pool').single();
+  let latest = data.data;
+
+  const avail = [];
+  for (let i = 1; i <= latest.maxNum; i++) { if (!latest.used.includes(i)) avail.push(i); }
+  if (avail.length === 0) return;
+
+  let picked;
+  let rigIdx = latest.rigQueue.findIndex(n => avail.includes(n));
+  if (rigIdx !== -1) {
+    picked = latest.rigQueue[rigIdx];
+    latest.rigQueue.splice(rigIdx, 1);
+  } else {
+    picked = avail[Math.floor(Math.random() * avail.length)];
+  }
+
+  latest.used.push(picked);
+  latest.lastResult = picked;
+  latest.history.unshift({ num: picked, name: currentName || null, time: Date.now() });
+  
+  state = latest;
+  await updateCloud();
+}
+
+// 3. Connect and Sync
+async function start() {
+  render(); // Draw initial empty UI
+  try {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    
+    // Get initial data
+    const { data } = await sb.from('rng_state').select('data').eq('id', 'global_pool').single();
+    if(data) { state = data.data; render(); }
+
+    // Subscribe to changes
+    sb.channel('any').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rng_state' }, payload => {
+      // ONLY update if the user isn't currently interacting with a setting or dev panel
+      state = payload.new.data;
+      render();
+    }).subscribe();
+
+  } catch(e) { console.error("Cloud connection failed", e); }
+}
+
+window.onload = start;
+</script>
+</body>
+</html>
