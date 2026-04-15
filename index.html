@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Test RNG - Realtime Sync</title>
+<title>Test RNG - Cloud Sync</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
-  /* CSS remains the same */
+  /* CSS remains exactly as you had it */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root { --bg: #0a0a0f; --surface: #13131c; --surface2: #1c1c2a; --border: rgba(120,100,255,0.2); --accent: #7b5cff; --accent2: #ff5c8a; --text: #e8e6ff; --muted: #7a789a; --mono: 'Space Mono', monospace; --sans: 'Syne', sans-serif; --gold: #ffd700; --danger: #ff4444; --success: #44ffaa; }
   body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; padding: 0; position: relative; overflow-x: hidden; }
@@ -58,7 +58,7 @@
   <header>
     <div class="logo">github.com / test-rng</div>
     <h1>TEST RNG</h1>
-    <p class="subtitle">// real-time sync — shared pool — stealth mode</p>
+    <p class="subtitle">// cloud synced — Shared Pool — Stealth Mode</p>
   </header>
   
   <div class="card" id="result-card">
@@ -67,204 +67,3 @@
   </div>
 
   <div id="stats-inner" class="stats-row" style="margin-bottom:16px;"></div>
-
-  <div class="card">
-    <div class="card-label">Your name (optional)</div>
-    <input type="text" id="name-input" placeholder="Enter your name…" maxlength="40" style="width:100%">
-  </div>
-
-  <div id="action-inner" class="roll-btn-wrap"></div>
-
-  <div class="card">
-    <div class="card-label">Settings</div>
-    <div class="input-row">
-      <input type="number" id="max-input" value="100">
-      <button class="btn primary" id="apply-btn">Update Pool</button>
-      <button class="btn danger" id="reset-btn">Reset All</button>
-    </div>
-  </div>
-
-  <div id="dev-section">
-    <div class="card">
-      <div class="card-label">Developer access</div>
-      <div class="input-row">
-        <input type="password" id="dev-code-input" placeholder="Enter code…">
-        <button class="btn" id="dev-unlock-btn">Unlock</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="section-divider"><span>number pool</span></div>
-  <div class="card">
-    <button class="btn" id="toggle-pool-btn" style="width:100%;margin-bottom:10px;">Show Full Pool</button>
-    <div id="pool-inner"></div>
-  </div>
-
-  <div class="section-divider"><span>draw history</span></div>
-  <div id="history-inner"></div>
-</div>
-
-<script>
-const SUPABASE_URL = 'https://qlbcxutceqeomxldliue.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFsYmN4dXRjZXFlb214bGRsaXVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNDY3MTgsImV4cCI6MjA5MTgyMjcxOH0.5DBDrXqvRILPOI0y4LJuGkqRG6tkye0s-1_KGbYDxUE';
-const DEV_CODE = 'CanvaDeveloper123';
-
-// Initialize Supabase Client
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-let state = { maxNum: 100, used: [], lastResult: null, rigQueue: [], history: [] };
-let isDev = false;
-let poolVisible = false;
-
-// REAL-TIME: Listen for changes in the database
-supabase
-  .channel('table-db-changes')
-  .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rng_state' }, payload => {
-    console.log('Update received!', payload.new.data);
-    state = payload.new.data;
-    updateDisplay();
-  })
-  .subscribe();
-
-async function fetchCloud() {
-  const { data, error } = await supabase
-    .from('rng_state')
-    .select('data')
-    .eq('id', 'global_pool')
-    .single();
-  return data.data;
-}
-
-async function updateCloud(newData) {
-  await supabase
-    .from('rng_state')
-    .update({ data: newData })
-    .eq('id', 'global_pool');
-}
-
-function updateDisplay() {
-  const available = [];
-  for (let i = 1; i <= state.maxNum; i++) { if (!state.used.includes(i)) available.push(i); }
-  const total = state.maxNum;
-  const pct = total > 0 ? Math.round((state.used.length / total) * 100) : 0;
-
-  document.getElementById('result-inner').innerHTML = state.lastResult !== null
-    ? `<div class="result-number">${state.lastResult}</div><div class="result-meta">${state.used.length} drawn · ${available.length} remaining</div>`
-    : `<div class="result-empty">— awaiting draw —</div>`;
-
-  document.getElementById('stats-inner').innerHTML = `
-    <div class="stat"><div class="stat-val">${total}</div><div class="stat-lbl">Pool size</div></div>
-    <div class="stat"><div class="stat-val">${state.used.length}</div><div class="stat-lbl">Drawn</div></div>
-    <div class="stat"><div class="stat-val">${available.length === 0 ? '∅' : pct + '%'}</div><div class="stat-lbl">Used</div></div>
-  `;
-
-  document.getElementById('action-inner').innerHTML = available.length === 0
-    ? `<div style="color:var(--danger);font-family:var(--mono);">Pool exhausted!</div>`
-    : `<button class="roll-btn" id="roll-btn">DRAW NUMBER</button>`;
-  document.getElementById('roll-btn')?.addEventListener('click', roll);
-
-  const poolBox = document.getElementById('pool-inner');
-  if (poolVisible) {
-    poolBox.innerHTML = `<div class="pool-grid">${Array.from({length: state.maxNum}, (_,i) => i+1).map(i => 
-      `<div class="pool-num ${state.used.includes(i) ? 'used' : ''}">${i}</div>`).join('')}</div>`;
-  } else {
-    poolBox.innerHTML = `<div style="font-family:var(--mono);color:var(--muted);font-size:12px;text-align:center;">Pool hidden</div>`;
-  }
-
-  document.getElementById('history-inner').innerHTML = state.history.length > 0 
-    ? `<div class="history-list">${state.history.slice(0,20).map(e => `
-        <div class="history-item">
-          <div><span class="num">${e.num}</span> ${e.name ? `<small style="margin-left:8px;color:var(--accent)">${e.name}</small>` : ''}</div>
-          <div class="meta">${new Date(e.time).toLocaleTimeString()}</div>
-        </div>`).join('')}</div>`
-    : '';
-
-  const qLabel = document.getElementById('queue-label');
-  if (qLabel) qLabel.innerText = `Stealth Queue — [${state.rigQueue.join(', ')}]`;
-  
-  // Only update input value if user isn't typing in it
-  const maxInput = document.getElementById('max-input');
-  if (maxInput && document.activeElement !== maxInput) {
-    maxInput.value = state.maxNum;
-  }
-}
-
-async function roll() {
-  const latest = await fetchCloud();
-  const available = [];
-  for (let i = 1; i <= latest.maxNum; i++) { if (!latest.used.includes(i)) available.push(i); }
-  if (available.length === 0) return;
-
-  let picked;
-  let rigIndex = latest.rigQueue.findIndex(num => available.includes(num));
-  if (rigIndex !== -1) {
-    picked = latest.rigQueue[rigIndex];
-    latest.rigQueue.splice(rigIndex, 1);
-  } else {
-    picked = available[Math.floor(Math.random() * available.length)];
-  }
-
-  latest.used.push(picked);
-  latest.lastResult = picked;
-  const name = document.getElementById('name-input').value.trim();
-  latest.history.unshift({ num: picked, name: name || null, time: Date.now() });
-  
-  await updateCloud(latest);
-  // Real-time listener will trigger updateDisplay() automatically!
-}
-
-document.getElementById('apply-btn').addEventListener('click', async () => {
-  const val = parseInt(document.getElementById('max-input').value);
-  if (!val || val < 1) return;
-  state.maxNum = val;
-  state.used = [];
-  state.lastResult = null;
-  state.history = [];
-  await updateCloud(state);
-});
-
-document.getElementById('reset-btn').addEventListener('click', async () => {
-  if(confirm('Clear all draws?')) {
-    state.used = [];
-    state.lastResult = null;
-    state.history = [];
-    await updateCloud(state);
-  }
-});
-
-document.getElementById('toggle-pool-btn').addEventListener('click', (e) => {
-  poolVisible = !poolVisible;
-  e.target.innerText = poolVisible ? 'Hide Full Pool' : 'Show Full Pool';
-  updateDisplay();
-});
-
-document.getElementById('dev-unlock-btn').addEventListener('click', () => {
-  if(document.getElementById('dev-code-input').value === DEV_CODE) {
-    isDev = true;
-    document.getElementById('dev-section').innerHTML = `
-      <div class="card rig-panel">
-        <div class="card-label" id="queue-label" style="color:var(--gold);">Stealth Queue — [${state.rigQueue.join(', ')}]</div>
-        <div class="input-row">
-          <input type="number" id="rig-input" placeholder="Queue number…">
-          <button class="btn gold" id="rig-btn">Add to Queue</button>
-        </div>
-      </div>`;
-    document.getElementById('rig-btn').addEventListener('click', async () => {
-      const val = parseInt(document.getElementById('rig-input').value);
-      if(!isNaN(val)) {
-        state.rigQueue.push(val);
-        document.getElementById('rig-input').value = '';
-        await updateCloud(state);
-      }
-    });
-  }
-});
-
-// Initial load
-(async () => {
-  state = await fetchCloud();
-  updateDisplay();
-})();
-</script>
-</body>
-</html>
