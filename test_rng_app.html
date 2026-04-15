@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Test RNG</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131c;
+    --surface2: #1c1c2a;
+    --border: rgba(120,100,255,0.2);
+    --accent: #7b5cff;
+    --accent2: #ff5c8a;
+    --text: #e8e6ff;
+    --muted: #7a789a;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+    --gold: #ffd700;
+    --danger: #ff4444;
+    --success: #44ffaa;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 0;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  .grid-bg {
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(123,92,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(123,92,255,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 40px 20px 80px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .logo {
+    font-size: 11px;
+    font-family: var(--mono);
+    letter-spacing: 4px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-size: clamp(40px, 8vw, 72px);
+    font-weight: 800;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    font-family: var(--mono);
+    color: var(--muted);
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+
+  .card-label {
+    font-size: 11px;
+    font-family: var(--mono);
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  input[type="text"], input[type="number"], input[type="password"] {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    flex: 1;
+    min-width: 0;
+  }
+
+  input:focus {
+    border-color: var(--accent);
+  }
+
+  .btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 13px;
+    padding: 10px 18px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { border-color: var(--accent); background: rgba(123,92,255,0.1); }
+  .btn:active { transform: scale(0.97); }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn.primary:hover { background: #9070ff; }
+  .btn.danger { border-color: var(--danger); color: var(--danger); }
+  .btn.danger:hover { background: rgba(255,68,68,0.1); }
+  .btn.gold { border-color: var(--gold); color: var(--gold); }
+  .btn.gold:hover { background: rgba(255,215,0,0.08); }
+
+  .result-display {
+    text-align: center;
+    padding: 40px 20px;
+    position: relative;
+  }
+
+  .result-number {
+    font-size: clamp(64px, 15vw, 120px);
+    font-weight: 800;
+    font-family: var(--mono);
+    line-height: 1;
+    background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: popIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+
+  .result-empty {
+    font-size: 18px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  @keyframes popIn {
+    from { transform: scale(0.5); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  .result-meta {
+    font-size: 13px;
+    font-family: var(--mono);
+    color: var(--muted);
+    margin-top: 10px;
+  }
+
+  .rig-badge {
+    display: inline-block;
+    background: rgba(255,215,0,0.1);
+    border: 1px solid rgba(255,215,0,0.3);
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--gold);
+    margin-top: 8px;
+    letter-spacing: 1px;
+  }
+
+  .pool-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) transparent;
+  }
+
+  .pool-num {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    color: var(--success);
+    background: rgba(68,255,170,0.05);
+  }
+
+  .pool-num.used {
+    color: var(--muted);
+    background: transparent;
+    text-decoration: line-through;
+    opacity: 0.4;
+  }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) transparent;
+  }
+
+  .history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 8px 12px;
+    background: var(--surface2);
+    border-radius: 8px;
+    border-left: 3px solid var(--accent);
+  }
+
+  .history-item .num { font-weight: 700; color: var(--text); font-size: 16px; }
+  .history-item .meta { color: var(--muted); font-size: 11px; }
+  .history-item .rigged { color: var(--gold); font-size: 11px; letter-spacing: 1px; }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  .stat {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+
+  .stat-val {
+    font-size: 28px;
+    font-weight: 800;
+    font-family: var(--mono);
+    color: var(--accent);
+  }
+
+  .stat-lbl {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  .rig-panel {
+    border: 1px solid rgba(255,215,0,0.3);
+    background: rgba(255,215,0,0.04);
+  }
+
+  .flash {
+    animation: flash 0.5s ease;
+  }
+
+  @keyframes flash {
+    0% { background: rgba(123,92,255,0.3); }
+    100% { background: var(--surface); }
+  }
+
+  .section-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 24px 0 16px;
+  }
+
+  .section-divider span {
+    font-size: 11px;
+    font-family: var(--mono);
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .section-divider::before,
+  .section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .msg {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-top: 10px;
+  }
+  .msg.error { background: rgba(255,68,68,0.1); color: var(--danger); border: 1px solid rgba(255,68,68,0.2); }
+  .msg.success { background: rgba(68,255,170,0.08); color: var(--success); border: 1px solid rgba(68,255,170,0.15); }
+  .msg.info { background: rgba(123,92,255,0.08); color: #a08fff; border: 1px solid rgba(123,92,255,0.2); }
+
+  .roll-btn-wrap { text-align: center; margin: 24px 0; }
+  .roll-btn {
+    font-size: 20px;
+    font-weight: 800;
+    padding: 18px 48px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--sans);
+    letter-spacing: 1px;
+  }
+  .roll-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(123,92,255,0.4); }
+  .roll-btn:active { transform: scale(0.97) translateY(0); }
+  .roll-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .empty-pool-msg {
+    text-align: center;
+    padding: 20px;
+    font-family: var(--mono);
+    color: var(--danger);
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div class="container">
+  <header>
+    <div class="logo">github.com / test-rng</div>
+    <h1>TEST RNG</h1>
+    <p class="subtitle">// fair draw — shared state — no repeats</p>
+  </header>
+
+  <div id="app">
+    <div class="card" style="text-align:center;padding:40px;">
+      <div style="font-family:var(--mono);color:var(--muted);font-size:14px;">Loading shared state...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'testrng-state';
+const HISTORY_KEY = 'testrng-history';
+const DEV_CODE = 'CanvaDeveloper123';
+
+let state = {
+  maxNum: 100,
+  used: [],
+  lastResult: null,
+  lastRigged: false,
+  rigTarget: null,
+};
+
+let history = [];
+
+async function loadState() {
+  try {
+    const s = await window.storage.get(STORAGE_KEY, true);
+    if (s && s.value) state = JSON.parse(s.value);
+  } catch(e) {}
+  try {
+    const h = await window.storage.get(HISTORY_KEY, true);
+    if (h && h.value) history = JSON.parse(h.value);
+  } catch(e) {}
+}
+
+async function saveState() {
+  try { await window.storage.set(STORAGE_KEY, JSON.stringify(state), true); } catch(e) {}
+  try { await window.storage.set(HISTORY_KEY, JSON.stringify(history.slice(-50)), true); } catch(e) {}
+}
+
+async function resetState() {
+  state.used = [];
+  state.lastResult = null;
+  state.lastRigged = false;
+  state.rigTarget = null;
+  history = [];
+  await saveState();
+  render();
+}
+
+let isDev = false;
+let devMsg = '';
+let rigInput = '';
+let nameInput = '';
+let maxInput = String(state.maxNum);
+let devCodeInput = '';
+let poolVisible = false;
+
+function getAvailable() {
+  const nums = [];
+  for (let i = 0; i <= state.maxNum; i++) {
+    if (!state.used.includes(i)) nums.push(i);
+  }
+  return nums;
+}
+
+async function roll() {
+  const available = getAvailable();
+  if (available.length === 0) {
+    showMsg('pool-empty-msg', 'Pool exhausted! Reset to continue.', 'error');
+    return;
+  }
+  let picked;
+  if (isDev && state.rigTarget !== null && available.includes(state.rigTarget)) {
+    picked = state.rigTarget;
+    state.lastRigged = true;
+    state.rigTarget = null;
+  } else {
+    picked = available[Math.floor(Math.random() * available.length)];
+    state.lastRigged = false;
+  }
+  state.used.push(picked);
+  state.lastResult = picked;
+  const entry = { num: picked, name: nameInput.trim() || null, rigged: state.lastRigged, time: Date.now() };
+  history.unshift(entry);
+  await saveState();
+  render();
+  const rd = document.getElementById('result-display');
+  if (rd) { rd.classList.remove('flash'); void rd.offsetWidth; rd.classList.add('flash'); }
+}
+
+async function applySettings() {
+  const v = parseInt(maxInput);
+  if (isNaN(v) || v < 1 || v > 10000) { showMsg('settings-msg', 'Max must be between 1 and 10000.', 'error'); return; }
+  if (v !== state.maxNum) {
+    state.maxNum = v;
+    state.used = [];
+    state.lastResult = null;
+    history = [];
+    await saveState();
+    showMsg('settings-msg', `Pool reset to 0 – ${v}.`, 'success');
+  }
+  render();
+}
+
+function tryDevCode() {
+  if (devCodeInput === DEV_CODE) {
+    isDev = true;
+    devMsg = 'Developer mode unlocked.';
+    devCodeInput = '';
+  } else {
+    devMsg = 'Invalid code.';
+  }
+  render();
+}
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.textContent = text;
+    el.className = 'msg ' + type;
+    el.style.display = 'block';
+    setTimeout(() => { if (el) el.style.display = 'none'; }, 3000);
+  }
+}
+
+function formatTime(ts) {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+
+function render() {
+  const available = getAvailable();
+  const used = state.used.length;
+  const total = state.maxNum + 1;
+  const pct = total > 0 ? Math.round((used / total) * 100) : 0;
+
+  document.getElementById('app').innerHTML = `
+    <div class="card" id="result-display">
+      <div class="card-label">Last draw</div>
+      <div class="result-display">
+        ${state.lastResult !== null
+          ? `<div class="result-number">${state.lastResult}</div>
+             <div class="result-meta">${used} drawn · ${available.length} remaining</div>
+             ${state.lastRigged ? '<div class="rig-badge">RIGGED</div>' : ''}`
+          : `<div class="result-empty">— awaiting draw —</div>`
+        }
+      </div>
+    </div>
+
+    <div class="stats-row" style="margin-bottom:16px;">
+      <div class="stat"><div class="stat-val">${total}</div><div class="stat-lbl">Pool size</div></div>
+      <div class="stat"><div class="stat-val">${used}</div><div class="stat-lbl">Drawn</div></div>
+      <div class="stat"><div class="stat-val">${available.length === 0 ? '∅' : pct + '%'}</div><div class="stat-lbl">Used</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Your name (optional)</div>
+      <div class="input-row">
+        <input type="text" id="name-input" placeholder="Enter your name…" value="${nameInput}" maxlength="40">
+      </div>
+    </div>
+
+    <div class="roll-btn-wrap">
+      ${available.length === 0
+        ? `<div class="empty-pool-msg">Pool exhausted — all numbers drawn!<br>Reset to start again.</div>`
+        : `<button class="roll-btn" id="roll-btn" ${available.length === 0 ? 'disabled' : ''}>DRAW NUMBER</button>`
+      }
+    </div>
+
+    <div class="card">
+      <div class="card-label">Settings</div>
+      <div class="input-row">
+        <input type="number" id="max-input" placeholder="Max number" value="${state.maxNum}" min="1" max="10000" style="max-width:160px;">
+        <button class="btn primary" id="apply-btn">Apply & reset</button>
+        <button class="btn danger" id="reset-btn">Full reset</button>
+      </div>
+      <div id="settings-msg" class="msg" style="display:none;"></div>
+    </div>
+
+    ${!isDev ? `
+    <div class="card">
+      <div class="card-label">Developer access</div>
+      <div class="input-row">
+        <input type="password" id="dev-code-input" placeholder="Enter developer code…" value="${devCodeInput}">
+        <button class="btn" id="dev-submit-btn">Unlock</button>
+      </div>
+      ${devMsg ? `<div class="msg ${devMsg.includes('Invalid') ? 'error' : 'success'}" style="margin-top:10px;">${devMsg}</div>` : ''}
+    </div>
+    ` : `
+    <div class="card rig-panel">
+      <div class="card-label" style="color:var(--gold);">Developer panel — rig next draw</div>
+      <div class="input-row">
+        <input type="number" id="rig-input" placeholder="Force this number…" value="${rigInput}" min="0" max="${state.maxNum}">
+        <button class="btn gold" id="rig-btn">Rig it</button>
+        <button class="btn" id="dev-lock-btn">Lock</button>
+      </div>
+      ${state.rigTarget !== null ? `<div class="msg info" style="margin-top:10px;">Next draw will force: <b>${state.rigTarget}</b></div>` : ''}
+      ${devMsg ? `<div class="msg ${devMsg.includes('Invalid') || devMsg.includes('not') ? 'error' : 'success'}" style="margin-top:10px;">${devMsg}</div>` : ''}
+    </div>
+    `}
+
+    <div class="section-divider"><span>number pool</span></div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div class="card-label" style="margin:0;">0 – ${state.maxNum}</div>
+        <button class="btn" id="toggle-pool-btn" style="font-size:12px;padding:6px 12px;">${poolVisible ? 'Hide pool' : 'Show pool'}</button>
+      </div>
+      ${poolVisible ? `
+      <div class="pool-grid">
+        ${Array.from({length: state.maxNum + 1}, (_,i) => `<div class="pool-num${state.used.includes(i) ? ' used' : ''}">${i}</div>`).join('')}
+      </div>
+      ` : `<div style="font-family:var(--mono);color:var(--muted);font-size:12px;">${used} / ${total} numbers drawn. Toggle to inspect.</div>`}
+    </div>
+
+    ${history.length > 0 ? `
+    <div class="section-divider"><span>draw history</span></div>
+    <div class="card">
+      <div class="card-label">Recent draws (shared)</div>
+      <div class="history-list">
+        ${history.slice(0,30).map(e => `
+          <div class="history-item">
+            <div>
+              <span class="num">${e.num}</span>
+              ${e.name ? `<span style="color:var(--accent);font-size:12px;margin-left:8px;">${e.name}</span>` : ''}
+            </div>
+            <div style="text-align:right;">
+              ${e.rigged ? `<div class="rigged">RIGGED</div>` : ''}
+              <div class="meta">${formatTime(e.time)}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    ` : ''}
+  `;
+
+  // Wire up events
+  const nameEl = document.getElementById('name-input');
+  if (nameEl) nameEl.addEventListener('input', e => { nameInput = e.target.value; });
+
+  const maxEl = document.getElementById('max-input');
+  if (maxEl) maxEl.addEventListener('input', e => { maxInput = e.target.value; });
+
+  const rollBtn = document.getElementById('roll-btn');
+  if (rollBtn) rollBtn.addEventListener('click', roll);
+
+  const applyBtn = document.getElementById('apply-btn');
+  if (applyBtn) applyBtn.addEventListener('click', applySettings);
+
+  const resetBtn = document.getElementById('reset-btn');
+  if (resetBtn) resetBtn.addEventListener('click', () => { if (confirm('Reset all draws and history?')) resetState(); });
+
+  const devSubmit = document.getElementById('dev-submit-btn');
+  if (devSubmit) devSubmit.addEventListener('click', tryDevCode);
+
+  const devCodeEl = document.getElementById('dev-code-input');
+  if (devCodeEl) {
+    devCodeEl.addEventListener('input', e => { devCodeInput = e.target.value; });
+    devCodeEl.addEventListener('keydown', e => { if (e.key === 'Enter') tryDevCode(); });
+  }
+
+  const rigBtn = document.getElementById('rig-btn');
+  if (rigBtn) rigBtn.addEventListener('click', async () => {
+    const v = parseInt(document.getElementById('rig-input').value);
+    if (isNaN(v) || v < 0 || v > state.maxNum) {
+      devMsg = `Number must be 0 – ${state.maxNum}.`; render(); return;
+    }
+    if (state.used.includes(v)) {
+      devMsg = `${v} already drawn — can't rig it.`; render(); return;
+    }
+    state.rigTarget = v;
+    rigInput = '';
+    devMsg = `Rigged! Next draw will return ${v}.`;
+    await saveState();
+    render();
+  });
+
+  const rigInputEl = document.getElementById('rig-input');
+  if (rigInputEl) rigInputEl.addEventListener('input', e => { rigInput = e.target.value; });
+
+  const devLockBtn = document.getElementById('dev-lock-btn');
+  if (devLockBtn) devLockBtn.addEventListener('click', () => { isDev = false; devMsg = ''; render(); });
+
+  const togglePool = document.getElementById('toggle-pool-btn');
+  if (togglePool) togglePool.addEventListener('click', () => { poolVisible = !poolVisible; render(); });
+}
+
+(async () => {
+  await loadState();
+  maxInput = String(state.maxNum);
+  render();
+})();
+</script>
+</body>
+</html>
